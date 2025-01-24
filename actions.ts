@@ -1,25 +1,35 @@
 "use server";
 
-import { lucia, validateRequest } from "@/auth";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { validateRequest } from "@/auth";
+import prisma from "@/lib/prisma";
+import streamServerClient from "@/lib/stream";
+import { getUserDataSelect } from "@/lib/types";
+import {
+  updateUserProfileSchema,
+  UpdateUserProfileValues,
+} from "@/lib/validation";
 
-export async function logout() {
-  const { session } = await validateRequest();
+export async function updateUserProfile(values: UpdateUserProfileValues) {
+  const validatedValues = updateUserProfileSchema.parse(values);
 
-  if (!session) {
-    throw new Error("Unauthorized");
-  }
+  const { user } = await validateRequest();
 
-  await lucia.invalidateSession(session.id);
+  if (!user) throw new Error("Unauthorized");
 
-  const sessionCookie = lucia.createBlankSessionCookie();
+  const updatedUser = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: user.id },
+      data: validatedValues,
+      select: getUserDataSelect(user.id),
+    });
+    await streamServerClient.partialUpdateUser({
+      id: user.id,
+      set: {
+        name: validatedValues.displayName,
+      },
+    });
+    return updatedUser;
+  });
 
-  cookies().set(
-    sessionCookie.name,
-    sessionCookie.value,
-    sessionCookie.attributes,
-  );
-
-  return redirect("/login");
+  return updatedUser;
 }
