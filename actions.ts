@@ -2,34 +2,25 @@
 
 import { validateRequest } from "@/auth";
 import prisma from "@/lib/prisma";
-import streamServerClient from "@/lib/stream";
-import { getUserDataSelect } from "@/lib/types";
-import {
-  updateUserProfileSchema,
-  UpdateUserProfileValues,
-} from "@/lib/validation";
+import { getPostDataInclude } from "@/lib/types";
 
-export async function updateUserProfile(values: UpdateUserProfileValues) {
-  const validatedValues = updateUserProfileSchema.parse(values);
-
+export async function deletePost(id: string) {
   const { user } = await validateRequest();
 
   if (!user) throw new Error("Unauthorized");
 
-  const updatedUser = await prisma.$transaction(async (tx) => {
-    const updatedUser = await tx.user.update({
-      where: { id: user.id },
-      data: validatedValues,
-      select: getUserDataSelect(user.id),
-    });
-    await streamServerClient.partialUpdateUser({
-      id: user.id,
-      set: {
-        name: validatedValues.displayName,
-      },
-    });
-    return updatedUser;
+  const post = await prisma.post.findUnique({
+    where: { id },
   });
 
-  return updatedUser;
+  if (!post) throw new Error("Post not found");
+
+  if (post.userId !== user.id) throw new Error("Unauthorized");
+
+  const deletedPost = await prisma.post.delete({
+    where: { id },
+    include: getPostDataInclude(user.id),
+  });
+
+  return deletedPost;
 }
