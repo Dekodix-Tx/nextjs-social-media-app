@@ -1,30 +1,37 @@
-import { google } from "@/auth";
-import { generateCodeVerifier, generateState } from "arctic";
-import { cookies } from "next/headers";
+import { validateRequest } from "@/auth";
+import prisma from "@/lib/prisma";
+import { getPostDataInclude, PostsPage } from "@/lib/types";
+import { NextRequest } from "next/server";
 
-export async function GET() {
-  const state = generateState();
-  const codeVerifier = generateCodeVerifier();
+export async function GET(req: NextRequest) {
+  try {
+    const cursor = req.nextUrl.searchParams.get("cursor") || undefined;
 
-  const url = await google.createAuthorizationURL(state, codeVerifier, {
-    scopes: ["profile", "email"],
-  });
+    const pageSize = 10;
 
-  cookies().set("state", state, {
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    maxAge: 60 * 10,
-    sameSite: "lax",
-  });
+    const { user } = await validateRequest();
 
-  cookies().set("code_verifier", codeVerifier, {
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    maxAge: 60 * 10,
-    sameSite: "lax",
-  });
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  return Response.redirect(url);
+    const posts = await prisma.post.findMany({
+      include: getPostDataInclude(user.id),
+      orderBy: { createdAt: "desc" },
+      take: pageSize + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+    });
+
+    const nextCursor = posts.length > pageSize ? posts[pageSize].id : null;
+
+    const data: PostsPage = {
+      posts: posts.slice(0, pageSize),
+      nextCursor,
+    };
+
+    return Response.json(data);
+  } catch (error) {
+    console.error(error);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
