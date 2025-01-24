@@ -1,28 +1,51 @@
-import { validateRequest } from "@/auth";
-import { redirect } from "next/navigation";
-import MenuBar from "./MenuBar";
-import Navbar from "./Navbar";
-import SessionProvider from "./SessionProvider";
+import { Toaster } from "@/components/ui/toaster";
+import { NextSSRPlugin } from "@uploadthing/react/next-ssr-plugin";
+import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
+import localFont from "next/font/local";
+import { extractRouterConfig } from "uploadthing/server";
+import { fileRouter } from "./api/uploadthing/core";
+import "./globals.css";
+import ReactQueryProvider from "./ReactQueryProvider";
 
-export default async function Layout({
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+});
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
+  variable: "--font-geist-mono",
+});
+
+export const metadata: Metadata = {
+  title: {
+    template: "%s | bugbook",
+    default: "bugbook",
+  },
+  description: "The social media app for powernerds",
+};
+
+export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
-  const session = await validateRequest();
-
-  if (!session.user) redirect("/login");
-
+}>) {
   return (
-    <SessionProvider value={session}>
-      <div className="flex min-h-screen flex-col">
-        <Navbar />
-        <div className="mx-auto flex w-full max-w-7xl grow gap-5 p-5">
-          <MenuBar className="sticky top-[5.25rem] hidden h-fit flex-none space-y-3 rounded-2xl bg-card px-3 py-5 shadow-sm sm:block lg:px-5 xl:w-80" />
-          {children}
-        </div>
-        <MenuBar className="sticky bottom-0 flex w-full justify-center gap-5 border-t bg-card p-3 sm:hidden" />
-      </div>
-    </SessionProvider>
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <NextSSRPlugin routerConfig={extractRouterConfig(fileRouter)} />
+        <ReactQueryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </ReactQueryProvider>
+        <Toaster />
+      </body>
+    </html>
   );
 }
